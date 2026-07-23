@@ -472,11 +472,68 @@ export async function generateSchedule(formData: FormData): Promise<void> {
 // Empréstimo de campos
 // ---------------------------------------------------------------------------
 
+type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
+
 /**
- * Empresta um campo livre a um escalão. Manda um grupo inteiro para lá — os dois
- * grupos têm guarda-redes diferentes, por isso correm em paralelo sem nunca
- * chocar — e re-marca os jogos que faltam a partir de agora, para os dois campos
- * arrancarem já. As eliminatórias ficam para o campo de casa, depois dos grupos.
+ * Re-marca os jogos que faltam de um escalão, espalhados pelo campo de casa mais
+ * os campos emprestados. Baliza 1 é o campo de casa; cada campo emprestado é
+ * outra baliza. As eliminatórias ficam para o fim, no campo de casa. Tudo numa
+ * só transação (função `reschedule_matches`), para dois jogos nunca ficarem na
+ * mesma chave a meio da remarcação.
+ */
+async function applyLending(
+  supabase: SupabaseServer,
+  settings: Settings,
+  categoryId: number,
+  borrowed: number[],
+  matches: Match[],
+): Promise<void> {
+  const cGroup = matches.filter((m) => m.category_id === categoryId && m.stage === "group");
+  const pending = cGroup.filter(
+    (m) =>
+      m.winner_participant_id === null &&
+      m.home_participant_id != null &&
+      m.away_participant_id != null,
+  );
+  if (pending.length === 0) {
+    throw new Error("Este escalão já não tem jogos de grupo por decidir para espalhar.");
+  }
+
+  const start = new Date(settings.starts_at);
+  const mm = settings.match_minutes;
+  const played = cGroup.filter((m) => m.winner_participant_id !== null).map((m) => m.round);
+  const base = played.length > 0 ? Math.max(...played) : 0;
+
+  const packed = repackMatches(pending, 1 + borrowed.length, base + 1);
+  const updates = packed.map((p) => ({
+    id: p.id,
+    round: p.round,
+    baliza: p.baliza,
+    campo: p.baliza === 1 ? null : (borrowed[p.baliza - 2] ?? null),
+    starts_at: slotTime(start, p.round, mm),
+  }));
+
+  // As eliminatórias esperam pela fase de grupos: entram depois dela, no campo
+  // de casa (baliza 1), uma de cada vez.
+  const maxRound = packed.reduce((mx, p) => Math.max(mx, p.round), base);
+  const semis = matches
+    .filter((m) => m.category_id === categoryId && m.stage === "semi")
+    .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
+  const finals = matches.filter((m) => m.category_id === categoryId && m.stage === "final");
+  [...semis, ...finals].forEach((m, i) => {
+    const round = maxRound + 1 + i;
+    updates.push({ id: m.id, round, baliza: 1, campo: null, starts_at: slotTime(start, round, mm) });
+  });
+
+  const { error } = await supabase.rpc("reschedule_matches", { p_updates: updates });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Empresta um campo livre a um escalão. Os jogos que faltam re-espalham-se pelo
+ * campo de casa e pelos emprestados — vários podem ajudar o mesmo escalão — sem
+ * nunca pôr um guarda-redes em dois ao mesmo tempo. Só entre balizas do mesmo
+ * tamanho.
  */
 export async function lendCampo(formData: FormData): Promise<void> {
   const borrowedCampo = Number(formData.get("campo"));
@@ -494,88 +551,59 @@ export async function lendCampo(formData: FormData): Promise<void> {
     );
   }
 
-  const cGroup = matches.filter((m) => m.category_id === categoryId && m.stage === "group");
-
-  // Os campos já emprestados a este escalão, mais o novo. Cada um é uma baliza a
-  // mais para onde os jogos que faltam se espalham.
   const already = [
     ...new Set(
-      cGroup
-        .filter((m) => m.campo != null && m.winner_participant_id === null)
+      matches
+        .filter(
+          (m) =>
+            m.category_id === categoryId &&
+            m.stage === "group" &&
+            m.campo != null &&
+            m.winner_participant_id === null,
+        )
         .map((m) => m.campo as number),
     ),
   ];
   if (already.includes(borrowedCampo)) {
     throw new Error(`O campo ${borrowedCampo} já está a receber jogos deste escalão.`);
   }
-  const borrowed = [...already, borrowedCampo];
 
-  const pending = cGroup.filter(
-    (m) =>
-      m.winner_participant_id === null &&
-      m.home_participant_id != null &&
-      m.away_participant_id != null,
-  );
-  if (pending.length === 0) {
-    throw new Error("Este escalão já não tem jogos de grupo por decidir para espalhar.");
-  }
-
-  const start = new Date(settings.starts_at);
-  const mm = settings.match_minutes;
-  const played = cGroup.filter((m) => m.winner_participant_id !== null).map((m) => m.round);
-  const base = played.length > 0 ? Math.max(...played) : 0;
-
-  // Baliza 1 = campo de casa; as seguintes = os campos emprestados, por ordem.
-  const packed = repackMatches(pending, 1 + borrowed.length, base + 1);
-  for (const p of packed) {
-    const campo = p.baliza === 1 ? null : (borrowed[p.baliza - 2] ?? null);
-    const { error } = await supabase
-      .from("matches")
-      .update({ round: p.round, campo, starts_at: slotTime(start, p.round, mm) })
-      .eq("id", p.id);
-    if (error) throw new Error(error.message);
-  }
-
-  // As eliminatórias esperam pela fase de grupos: entram depois dela, no campo
-  // de casa.
-  const maxRound = packed.reduce((mx, p) => Math.max(mx, p.round), base);
-  const semis = matches
-    .filter((m) => m.category_id === categoryId && m.stage === "semi")
-    .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
-  const final = matches.find((m) => m.category_id === categoryId && m.stage === "final");
-  for (let i = 0; i < semis.length; i++) {
-    const round = maxRound + 1 + i;
-    const { error } = await supabase
-      .from("matches")
-      .update({ round, campo: null, starts_at: slotTime(start, round, mm) })
-      .eq("id", semis[i].id);
-    if (error) throw new Error(error.message);
-  }
-  if (final) {
-    const round = maxRound + semis.length + 1;
-    const { error } = await supabase
-      .from("matches")
-      .update({ round, campo: null, starts_at: slotTime(start, round, mm) })
-      .eq("id", final.id);
-    if (error) throw new Error(error.message);
-  }
-
+  await applyLending(supabase, settings, categoryId, [...already, borrowedCampo], matches);
   refreshEverything();
 }
 
 /**
- * Devolve um campo emprestado: os jogos que estavam lá voltam ao campo de casa.
- * Não re-marca — os que faltam continuam a jogar-se no campo do escalão.
+ * Devolve um campo emprestado. Os jogos que faltam voltam a espalhar-se pelo
+ * campo de casa e pelos que continuam emprestados.
  */
 export async function returnCampo(formData: FormData): Promise<void> {
   const campo = Number(formData.get("campo"));
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("matches")
-    .update({ campo: null })
-    .eq("campo", campo)
-    .is("winner_participant_id", null);
-  if (error) throw new Error(error.message);
+  const { supabase, settings, matches } = await loadAll();
+
+  const borrowedMatch = matches.find(
+    (m) => m.campo === campo && m.winner_participant_id === null,
+  );
+  if (!borrowedMatch) {
+    refreshEverything();
+    return;
+  }
+  const categoryId = borrowedMatch.category_id;
+  const remaining = [
+    ...new Set(
+      matches
+        .filter(
+          (m) =>
+            m.category_id === categoryId &&
+            m.stage === "group" &&
+            m.campo != null &&
+            m.campo !== campo &&
+            m.winner_participant_id === null,
+        )
+        .map((m) => m.campo as number),
+    ),
+  ];
+
+  await applyLending(supabase, settings, categoryId, remaining, matches);
   refreshEverything();
 }
 
