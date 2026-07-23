@@ -1,0 +1,68 @@
+# Aplica as migrações ao Supabase quando entra código novo em `main`.
+#
+# ATENÇÃO: só uses isto se o projeto Supabase tiver sido montado por aqui desde
+# o início. Se correste o `supabase/01_schema.sql` à mão no SQL Editor, o
+# Supabase não sabe que essa migração já foi aplicada — e o primeiro `db push`
+# ia aplicá-la outra vez, com o `drop table ... cascade` que ela tem no topo.
+# A meio do torneio isso apagava tudo. O README explica como sair disso.
+#
+# Para ligar, em Settings → Secrets and variables → Actions:
+#   SUPABASE_ACCESS_TOKEN  — supabase.com/dashboard/account/tokens
+#   SUPABASE_DB_PASSWORD   — a password da base de dados do projeto
+#   SUPABASE_PROJECT_REF   — o id do projeto (está no URL do dashboard)
+#
+# Enquanto os secrets não existirem, isto não faz nada e não falha.
+
+name: Migrações
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+  workflow_dispatch:
+
+concurrency:
+  # Duas migrações ao mesmo tempo na mesma base de dados não acaba bem.
+  group: migracoes-supabase
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ver se está configurado
+        id: check
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$REF" ]; then
+            echo "Sem secrets do Supabase — não há nada a fazer."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.ok == 'true'
+        with:
+          version: latest
+
+      - name: Mostrar o que vai mudar
+        if: steps.check.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase migration list
+
+      - name: Aplicar
+        if: steps.check.outputs.ok == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push

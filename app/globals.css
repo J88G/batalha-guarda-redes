@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+/*
+  Penalty Cup 2026 · RX Soccer Academy
+
+  O emblema da RX é uma bola de painéis pretos sobre branco. O site herda isso:
+  papel branco, tinta preta, riscas de giz. Sem modo escuro — isto lê-se num
+  telemóvel, ao sol, às cinco da tarde de Julho.
+
+  Uma só cor além do preto e branco: a marca do penálti, e só para o que está
+  a decorrer. O ouro aparece uma vez por escalão, no campeão.
+*/
+@theme {
+  --color-paper: #ffffff;
+  --color-ink: #0b0b0b;
+  --color-chalk: #e2e2dd;
+  --color-smoke: #75756e;
+  --color-spot: #ff3b14;
+  --color-gold: #e8a80c;
+
+  --font-display: var(--font-archivo), "Arial Narrow", system-ui, sans-serif;
+  --font-mono: var(--font-martian), ui-monospace, monospace;
+
+  --radius-panel: 2px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    font-variation-settings: "wdth" 100;
+    /* O placard nunca deve dançar quando os números mudam. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  /*
+    O Chrome pinta de azul os campos que preenche sozinho, e naquele azul não
+    há nada deste site. A sombra interior é a única forma de lhe tapar o fundo.
+  */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-paper) inset;
+    caret-color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-spot);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /*
+    O numeral do escalão e o número da baliza: Archivo esticado ao máximo,
+    como o "R X" do emblema.
+  */
+  .numeral {
+    font-family: var(--font-display);
+    font-variation-settings: "wdth" 125;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.82;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /*
+    A baliza. Trave em cima, dois postes, e a linha de golo aberta em baixo —
+    é assim que se vê uma baliza de frente. A rede é a única textura do site.
+  */
+  .goal-frame {
+    position: relative;
+    border-top: 3px solid currentColor;
+    border-left: 3px solid currentColor;
+    border-right: 3px solid currentColor;
+    isolation: isolate;
+  }
+
+  .goal-frame::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 9px),
+      repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 9px);
+    opacity: 0.16;
+    transition:
+      opacity 220ms ease,
+      transform 220ms ease;
+  }
+
+  /*
+    Uma baliza acesa está em uso; uma baliza apagada está à espera.
+
+    Isto não é enfeite: a rede desenhada diz "está a acontecer". Se um jogo por
+    começar tivesse o mesmo aspecto de um a decorrer, quem está no recinto lia
+    as duas coisas como iguais — e a pergunta que ali se faz é exactamente essa.
+  */
+  .goal-frame[data-state="scheduled"],
+  .goal-frame[data-state="free"] {
+    border-color: var(--color-chalk);
+  }
+
+  .goal-frame[data-state="scheduled"]::before,
+  .goal-frame[data-state="free"]::before {
+    opacity: 0.05;
+  }
+
+  .goal-frame[data-state="live"]::before {
+    opacity: 0.3;
+  }
+
+  /*
+    A baliza sem rede. A rede quer dizer "está aqui um jogo" — onde não há
+    jogo, é ruído. Fica a trave e os postes, que é a forma da coisa.
+  */
+  .goal-frame[data-state="empty"]::before {
+    content: none;
+  }
+
+  /*
+    A bola a entrar na rede.
+
+    É a única animação do site, e só corre quando um resultado chega mesmo —
+    naquela baliza e mais nenhuma. Num placard ao vivo a única coisa que muda é
+    um resultado a aterrar, e num torneio de penáltis esse momento é a bola a
+    bater na rede. Animar outra coisa qualquer seria enfeite.
+
+    A rede apanha e devolve; a moldura acende à cor do penálti e apaga. Nada
+    disto mexe no espaço que a caixa ocupa, por isso não pode empurrar o resto
+    da página.
+  */
+  .goal-frame[data-landed="true"] {
+    animation: frame-catch 700ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  .goal-frame[data-landed="true"]::before {
+    animation: net-catch 700ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+
+  @keyframes net-catch {
+    0% {
+      opacity: 0.16;
+      transform: scaleY(1);
+    }
+    18% {
+      opacity: 0.75;
+      transform: scaleY(1.06);
+    }
+    45% {
+      opacity: 0.4;
+      transform: scaleY(0.985);
+    }
+    70% {
+      opacity: 0.32;
+      transform: scaleY(1.008);
+    }
+    100% {
+      opacity: 0.16;
+      transform: scaleY(1);
+    }
+  }
+
+  @keyframes frame-catch {
+    0%,
+    100% {
+      color: var(--color-ink);
+    }
+    18%,
+    55% {
+      color: var(--color-spot);
+    }
+  }
+
+  /* O nome do vencedor sublinha-se, como quem risca a folha na mesa. */
+  .winner-mark {
+    background-image: linear-gradient(var(--color-ink), var(--color-ink));
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 100% 2px;
+  }
+
+  [data-landed="true"] .winner-mark {
+    animation: mark-draw 500ms 120ms cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+  }
+
+  @keyframes mark-draw {
+    from {
+      background-size: 0% 2px;
+    }
+    to {
+      background-size: 100% 2px;
+    }
+  }
+
+  .pulse-dot {
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.25;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

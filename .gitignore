@@ -1,0 +1,30 @@
+# Dependências e build
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Segredos. A anon key do Supabase é pública, mas o ficheiro pode ganhar
+# outras chaves com o tempo — mais vale nunca cá estar.
+.env
+.env*.local
+
+# Supabase local: só a máquina de quem corre é que precisa disto.
+supabase/.branches/
+supabase/.temp/
+
+# Vercel
+.vercel
+
+# Ferramentas locais
+.claude/settings.local.json
+
+# Sistema e editores
+.DS_Store
+npm-debug.log*
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
