@@ -61,8 +61,10 @@ export default async function AdminPage() {
     })
     .filter((g) => blockingTie(g.standings, g.qualifiers));
 
-  const behind = currentRound !== null ? expectedRound - currentRound : 0;
   const started = now.getTime() >= new Date(settings.starts_at).getTime();
+  // Antes do apito, o "atraso" não quer dizer nada: os jogos podem estar
+  // datados de um ensaio antigo. Só depois de começar é que faz sentido.
+  const behind = started && currentRound !== null ? expectedRound - currentRound : 0;
   const lastAt = matches.reduce<string | null>(
     (acc, m) => (acc === null || m.starts_at > acc ? m.starts_at : acc),
     null,

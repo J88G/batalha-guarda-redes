@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getBattle } from "@/lib/data";
 import { countdownLabel, dateLabel, timeLabel } from "@/lib/format";
 import { categoryProgress } from "@/lib/tournament";
+import { signOut } from "../actions";
 import { LoginForm } from "./login-form";
 
 export const dynamic = "force-dynamic";
@@ -56,9 +57,9 @@ function estadoDoTorneio(startsAt: string, currentRound: number | null, totalRou
 export default async function EntrarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ seguir?: string }>;
+  searchParams: Promise<{ seguir?: string; erro?: string }>;
 }) {
-  const { seguir } = await searchParams;
+  const { seguir, erro } = await searchParams;
 
   // O login tem de funcionar mesmo que a base de dados esteja em baixo: sem os
   // dados, mostra-se menos, mas a porta abre à mesma.
@@ -137,6 +138,24 @@ export default async function EntrarPage({
             <p className="mt-2 border-t-2 border-ink pt-2 text-sm text-smoke">
               Batalha de Guarda-Redes · RX Soccer Academy
             </p>
+          )}
+
+          {erro === "nao-mesa" && (
+            <div className="mt-4 border-l-2 border-spot bg-spot/5 px-3 py-2.5 text-sm">
+              <p className="font-bold">Esta conta não é da mesa.</p>
+              <p className="mt-0.5 text-smoke">
+                Entrar e poder gravar são coisas diferentes: só as contas da mesa é que abrem
+                aqui. Entra com uma conta autorizada, ou sai desta.
+              </p>
+              <form action={signOut} className="mt-2">
+                <button
+                  type="submit"
+                  className="eyebrow text-ink underline underline-offset-2 hover:text-spot"
+                >
+                  Sair desta conta
+                </button>
+              </form>
+            </div>
           )}
 
           {/*
