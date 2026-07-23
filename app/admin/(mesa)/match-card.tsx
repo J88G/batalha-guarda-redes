@@ -70,10 +70,12 @@ export function MatchCard({
   match,
   campoLabel,
   showBaliza,
+  group,
 }: {
   match: ResolvedMatch;
   campoLabel: string;
   showBaliza: boolean;
+  group: string | null;
 }) {
   const [showScore, setShowScore] = useState(
     match.home_score !== null || match.away_score !== null,
@@ -93,6 +95,9 @@ export function MatchCard({
       <header className="flex items-center gap-2 border-b border-chalk px-2.5 py-1.5">
         <span className="numeral text-xl leading-none">{campoLabel}</span>
         {showBaliza && <span className="eyebrow text-smoke">B{match.baliza}</span>}
+        {group && (
+          <span className="eyebrow border border-chalk px-1 py-0.5 text-ink">{group}</span>
+        )}
         <span className="eyebrow text-smoke">{timeLabel(match.starts_at)}</span>
         {match.stage !== "group" ? (
           <span className="eyebrow ml-auto bg-ink px-1.5 py-0.5 text-paper">

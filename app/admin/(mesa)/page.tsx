@@ -27,6 +27,12 @@ export default async function AdminPage() {
   const campoOf = (categoryId: number) => categories.find((c) => c.id === categoryId);
   const shortOf = (categoryId: number) => campoOf(categoryId)?.short_label ?? "";
   const sortOf = (categoryId: number) => campoOf(categoryId)?.sort_order ?? 0;
+  const groupOf = (m: ResolvedMatch) => {
+    if (m.stage !== "group" || m.group_id == null) return null;
+    if ((campoOf(m.category_id)?.group_count ?? 1) <= 1) return null;
+    const g = groups.find((x) => x.id === m.group_id);
+    return g ? `Grupo ${g.name}` : null;
+  };
 
   // Cada campo físico só tem um jogo de cada vez — incluindo os emprestados, que
   // aparecem no campo para onde foram mandados.
@@ -220,6 +226,7 @@ export default async function AdminPage() {
                 match={m}
                 campoLabel={shortOf(m.category_id) + (m.campo ? ` · C${m.campo}` : "")}
                 showBaliza={(campoOf(m.category_id)?.baliza_count ?? 1) > 1}
+                group={groupOf(m)}
               />
             ))}
           </div>
@@ -242,6 +249,7 @@ export default async function AdminPage() {
                 match={m}
                 campoLabel={shortOf(m.category_id) + (m.campo ? ` · C${m.campo}` : "")}
                 showBaliza={(campoOf(m.category_id)?.baliza_count ?? 1) > 1}
+                group={groupOf(m)}
               />
             ))}
           </div>
