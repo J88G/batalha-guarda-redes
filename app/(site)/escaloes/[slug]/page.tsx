@@ -72,12 +72,11 @@ export default async function EscalaoPage({ params }: { params: Promise<{ slug: 
   const champion = championOf(category, groups, participants, matches);
   const qualifiers = qualifiersPerGroup(category);
   const anos = category.birth_year_min === category.birth_year_max ? `${category.birth_year_min}` : `${category.birth_year_min}–${category.birth_year_max}`;
+  const grupoLabel = category.group_count === 1 ? "Poule única" : `${category.group_count} grupos`;
   const formato =
     category.knockout === "none"
       ? `Campeonato${category.legs === 2 ? " a 2 voltas" : ""}`
-      : category.group_count === 2
-        ? `2 grupos · ${category.knockout === "semis" ? "meias-finais e final" : "final"}`
-        : `Poule única · ${category.knockout === "semis" ? "meias-finais e final" : "final"}`;
+      : `${grupoLabel} · ${category.knockout === "semis" ? "meias-finais e final" : "final"}`;
 
   return (
     <>
@@ -109,14 +108,14 @@ export default async function EscalaoPage({ params }: { params: Promise<{ slug: 
           <p className="mb-2 border-l-2 border-chalk pl-3 text-sm text-smoke">
             O calendário ainda não foi gerado. Estes são os guarda-redes inscritos.
           </p>
-          <div className={cGroups.length === 2 ? "grid gap-4 md:grid-cols-2" : ""}>
+          <div className={cGroups.length > 1 ? (cGroups.length >= 3 ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "grid gap-4 md:grid-cols-2") : ""}>
             {cGroups.map((group) => {
               const gp = participants
                 .filter((p) => p.group_id === group.id)
                 .sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99));
               return (
                 <div key={group.id} className="border border-chalk p-3">
-                  {category.group_count === 2 && (
+                  {category.group_count > 1 && (
                     <p className="mb-2 text-sm font-bold">Grupo {group.name}</p>
                   )}
                   <ol className="divide-y divide-chalk">
@@ -137,7 +136,7 @@ export default async function EscalaoPage({ params }: { params: Promise<{ slug: 
         <>
           <section className="mt-6">
             <h2 className="eyebrow mb-2 text-smoke">Classificação</h2>
-            <div className={cGroups.length === 2 ? "grid gap-4 md:grid-cols-2" : ""}>
+            <div className={cGroups.length > 1 ? (cGroups.length >= 3 ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "grid gap-4 md:grid-cols-2") : ""}>
               {cGroups.map((group) => {
                 const gp = participants.filter((p) => p.group_id === group.id);
                 const standings = computeStandings(gp, cMatches.filter((m) => m.group_id === group.id));

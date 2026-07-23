@@ -382,6 +382,8 @@ export function repackMatches(
 /** Quantos se apuram de cada grupo, conforme o formato. */
 export function qualifiersPerGroup(category: Pick<Category, "group_count" | "knockout">): number {
   if (category.knockout === "none") return 0;
+  // Com três grupos apura-se o 1º de cada (o melhor 2º é um extra à parte).
+  if (category.group_count === 3) return 1;
   if (category.knockout === "final") return category.group_count === 2 ? 1 : 2;
   return category.group_count === 2 ? 2 : 4; // semis
 }
@@ -452,7 +454,13 @@ export function buildCategorySchedule(
 
   const semiPairs: { home: string; away: string }[] = [];
   if (category.knockout === "semis") {
-    if (category.group_count === 2 && groupB) {
+    if (category.group_count === 3) {
+      // Apuram os 3 vencedores de grupo + o melhor 2º lugar. As meias cruzam-se
+      // por mérito: o melhor vencedor apanha o melhor 2º; os outros dois
+      // vencedores jogam entre si.
+      semiPairs.push({ home: "seedwinner:1", away: "bestsecond:1" });
+      semiPairs.push({ home: "seedwinner:2", away: "seedwinner:3" });
+    } else if (category.group_count === 2 && groupB) {
       semiPairs.push({ home: `group:${groupA.id}:1`, away: `group:${groupB.id}:2` });
       semiPairs.push({ home: `group:${groupB.id}:1`, away: `group:${groupA.id}:2` });
     } else {
@@ -494,6 +502,10 @@ export function buildCategorySchedule(
   if (category.knockout === "semis") {
     finalHome = "winner:semi:1";
     finalAway = "winner:semi:2";
+  } else if (category.group_count === 3) {
+    // Só final, com três grupos: os dois melhores vencedores de grupo.
+    finalHome = "seedwinner:1";
+    finalAway = "seedwinner:2";
   } else if (category.group_count === 2 && groupB) {
     finalHome = `group:${groupA.id}:1`;
     finalAway = `group:${groupB.id}:1`;
@@ -561,6 +573,36 @@ function semiOf(ctx: ResolveContext, categoryId: number, slot: number): Match | 
   );
 }
 
+/** Todos os grupos de um escalão já fechados. */
+function categoryGroupsComplete(categoryId: number, ctx: ResolveContext): boolean {
+  const gs = ctx.groups.filter((g) => g.category_id === categoryId);
+  return gs.length > 0 && gs.every((g) => isGroupComplete(g.id, ctx.matches));
+}
+
+/**
+ * Ordena classificações de grupos diferentes entre si — para cruzar as meias com
+ * três grupos. Pontos, depois diferença de golos, depois golos; e por fim o nome,
+ * para o cruzamento sair sempre (nunca fica preso num empate a decidir a ordem).
+ */
+function crossGroupSort(list: Standing[]): Standing[] {
+  return [...list].sort(
+    (a, b) =>
+      b.points - a.points ||
+      b.diff - a.diff ||
+      b.scored - a.scored ||
+      a.name.localeCompare(b.name, "pt"),
+  );
+}
+
+/** O `place`-ésimo classificado de cada grupo do escalão, ordenados entre si. */
+function rankedAcrossGroups(categoryId: number, place: number, ctx: ResolveContext): Standing[] {
+  const gs = ctx.groups.filter((g) => g.category_id === categoryId);
+  const rows = gs
+    .map((g) => ctx.standingsByGroup.get(g.id)?.[place - 1])
+    .filter((s): s is Standing => s !== undefined);
+  return crossGroupSort(rows);
+}
+
 function resolveSide(
   participantId: number | null,
   source: string | null,
@@ -592,6 +634,25 @@ function resolveSide(
     if (!standing) return { participantId: null, label, pending: true };
     if (standing.tiedUnresolved) return { participantId: null, label, pending: true };
     return { participantId: standing.participantId, label: standing.name, pending: false };
+  }
+
+  // O N-ésimo melhor vencedor de grupo do escalão (só com três grupos).
+  if (parts[0] === "seedwinner") {
+    const n = Number(parts[1]);
+    const label = n === 1 ? "Melhor 1º de grupo" : `${ORDINAL[n] ?? `${n}º`} melhor 1º de grupo`;
+    if (!categoryGroupsComplete(categoryId, ctx)) return { participantId: null, label, pending: true };
+    const s = rankedAcrossGroups(categoryId, 1, ctx)[n - 1];
+    if (!s || s.tiedUnresolved) return { participantId: null, label, pending: true };
+    return { participantId: s.participantId, label: s.name, pending: false };
+  }
+
+  // O melhor 2º lugar dos grupos do escalão.
+  if (parts[0] === "bestsecond") {
+    const label = "Melhor 2º lugar";
+    if (!categoryGroupsComplete(categoryId, ctx)) return { participantId: null, label, pending: true };
+    const s = rankedAcrossGroups(categoryId, 2, ctx)[0];
+    if (!s || s.tiedUnresolved) return { participantId: null, label, pending: true };
+    return { participantId: s.participantId, label: s.name, pending: false };
   }
 
   if (parts[0] === "winner" && parts[1] === "semi") {

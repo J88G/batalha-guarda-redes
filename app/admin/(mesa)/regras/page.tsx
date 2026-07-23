@@ -37,7 +37,7 @@ function Regra({ termo, children }: { termo: string; children: React.ReactNode }
 
 function formatoLabel(c: Category): string {
   if (c.knockout === "none") return `Campeonato${c.legs === 2 ? " a 2 voltas" : ""}`;
-  const base = c.group_count === 2 ? "2 grupos" : "poule única";
+  const base = c.group_count === 1 ? "poule única" : `${c.group_count} grupos`;
   const remate = c.knockout === "semis" ? "meias e final" : "final";
   return `${base} · ${remate}`;
 }

@@ -47,19 +47,20 @@ function scenario(cfg: Cfg) {
     birth_year_max: 2016,
   };
   const groups: Group[] =
-    cfg.groupCount === 2
-      ? [
-          { id: 1, category_id: 1, name: "A" },
-          { id: 2, category_id: 1, name: "B" },
-        ]
-      : [{ id: 1, category_id: 1, name: "Única" }];
+    cfg.groupCount === 1
+      ? [{ id: 1, category_id: 1, name: "Única" }]
+      : Array.from({ length: cfg.groupCount }, (_, i) => ({
+          id: i + 1,
+          category_id: 1,
+          name: String.fromCharCode(65 + i),
+        }));
 
   const participants: Participant[] = Array.from({ length: cfg.count }, (_, i) => {
     const seed = i + 1;
     return {
       id: seed,
       category_id: 1,
-      group_id: cfg.groupCount === 2 ? (seed % 2 === 1 ? 1 : 2) : 1,
+      group_id: groups[(seed - 1) % groups.length].id,
       name: `G${seed}`,
       birth_year: 2015,
       seed,
@@ -248,6 +249,43 @@ console.log("\n· Empréstimo de campos: re-espalhar por N balizas sem chocar");
       new Set(packed.map((p) => p.baliza)).size > 1,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n· Três grupos: 3 vencedores + melhor 2º às meias-finais");
+// ---------------------------------------------------------------------------
+{
+  const s = scenario({ count: 9, groupCount: 3, legs: 1, knockout: "semis", balizas: 1 });
+
+  check("9 GR · 3 grupos (3+3+3) → 9 jogos", s.planned.filter((m) => m.stage === "group").length, roundsFor(3) * 3);
+  check("3 grupos · apura 1 de cada", qualifiersPerGroup(s.category), 1);
+
+  const semis = s.planned.filter((m) => m.stage === "semi");
+  check("3 grupos · 2 meias-finais", semis.length, 2);
+  const sources = semis.flatMap((m) => [m.home_source, m.away_source]).sort();
+  check(
+    "3 grupos · fontes das meias (3 vencedores + melhor 2º)",
+    sources,
+    ["bestsecond:1", "seedwinner:1", "seedwinner:2", "seedwinner:3"],
+  );
+
+  // Joga a fase de grupos: em cada grupo, o de número mais baixo ganha tudo.
+  const matches = withIds(s.planned);
+  for (const m of matches) {
+    if (m.stage === "group" && m.home_participant_id && m.away_participant_id) {
+      m.winner_participant_id = Math.min(m.home_participant_id, m.away_participant_id);
+    }
+  }
+  const now = new Date(START.getTime() + 10 * 60 * 60_000);
+  const resolved = resolveAll(matches, [s.category], s.groups, s.participants, now);
+  const rSemis = resolved.filter((m) => m.stage === "semi");
+  const apurados = rSemis.flatMap((m) => [m.home.participantId, m.away.participantId]);
+  ok("3 grupos · meias com 4 nomes reais", apurados.every((x) => x !== null));
+  ok("3 grupos · 4 apurados distintos", new Set(apurados).size === 4);
+  ok(
+    "3 grupos · ninguém joga as duas meias",
+    rSemis.every((m) => m.home.participantId !== m.away.participantId),
+  );
 }
 
 console.log(failures === 0 ? "\n✓ Tudo certo.\n" : `\n✗ ${failures} falha(s).\n`);

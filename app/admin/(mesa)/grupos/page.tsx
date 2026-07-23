@@ -55,7 +55,7 @@ export default async function GruposPage() {
                 <span className="numeral text-2xl">{category.short_label}</span>
                 <span className="eyebrow text-smoke">
                   {cParticipants.length} GR · Campo {category.campo} · {anos} ·{" "}
-                  {category.group_count === 1 ? "poule única" : "dois grupos"}
+                  {category.group_count === 1 ? "poule única" : `${category.group_count} grupos`}
                 </span>
               </h2>
 

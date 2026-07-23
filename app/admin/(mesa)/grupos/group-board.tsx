@@ -292,9 +292,19 @@ export function GroupBoard({
         </div>
       )}
 
-      <div className={single ? "" : "grid gap-2 sm:grid-cols-2"}>
+      <div
+        className={
+          single
+            ? ""
+            : ordered.length >= 3
+              ? "grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+              : "grid gap-2 sm:grid-cols-2"
+        }
+      >
         {ordered.map((group, index) => {
-          const other = single ? undefined : ordered[index === 0 ? 1 : 0];
+          // A seta passa para o grupo seguinte, em roda — com dois grupos é o
+          // outro; com três, vai A→B→C→A.
+          const other = single ? undefined : ordered[(index + 1) % ordered.length];
           const inGroup = shown
             .filter((p) => p.group_id === group.id)
             .sort((a, b) => (a.seed ?? 99) - (b.seed ?? 99));
@@ -331,7 +341,7 @@ export function GroupBoard({
                       participant={participant}
                       otherGroup={other}
                       matchCount={matchCounts[participant.id] ?? 0}
-                      arrow={single ? null : index === 0 ? "→" : "←"}
+                      arrow={single ? null : "→"}
                       onMove={(gid) => move(participant.id, gid)}
                       onDragStart={() => setDragging(participant.id)}
                       dragging={dragging === participant.id}

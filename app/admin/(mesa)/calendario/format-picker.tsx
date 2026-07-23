@@ -89,6 +89,7 @@ export function FormatPicker({
           options={[
             { value: 1, label: "Poule única" },
             { value: 2, label: "Dois grupos" },
+            { value: 3, label: "Três grupos" },
           ]}
         />
         <Field

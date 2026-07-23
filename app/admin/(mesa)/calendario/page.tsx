@@ -38,7 +38,7 @@ export default async function AdminCalendarioPage() {
           const formato =
             category.knockout === "none"
               ? `Campeonato${category.legs === 2 ? " a 2 voltas" : ""}`
-              : `${category.group_count === 2 ? "2 grupos" : "poule única"} · ${
+              : `${category.group_count === 1 ? "poule única" : `${category.group_count} grupos`} · ${
                   category.knockout === "semis" ? "meias e final" : "final"
                 }`;
 

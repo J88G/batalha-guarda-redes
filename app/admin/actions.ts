@@ -378,7 +378,8 @@ const KNOCKOUTS: Knockout[] = ["none", "final", "semis"];
  */
 export async function setCategoryFormat(formData: FormData): Promise<void> {
   const categoryId = Number(formData.get("categoryId"));
-  const groupCount = Number(formData.get("groupCount")) === 1 ? 1 : 2;
+  const gcRaw = Number(formData.get("groupCount"));
+  const groupCount = gcRaw === 1 ? 1 : gcRaw === 3 ? 3 : 2;
   const legs = Number(formData.get("legs")) === 2 ? 2 : 1;
   const knockoutRaw = String(formData.get("knockout"));
   const knockout: Knockout = KNOCKOUTS.includes(knockoutRaw as Knockout)
@@ -410,7 +411,7 @@ export async function setCategoryFormat(formData: FormData): Promise<void> {
     const delGroups = await supabase.from("groups").delete().eq("category_id", categoryId);
     if (delGroups.error) throw new Error(delGroups.error.message);
 
-    const names = groupCount === 2 ? ["A", "B"] : ["Única"];
+    const names = groupCount === 1 ? ["Única"] : groupCount === 3 ? ["A", "B", "C"] : ["A", "B"];
     const insGroups = await supabase
       .from("groups")
       .insert(names.map((name) => ({ category_id: categoryId, name })))
