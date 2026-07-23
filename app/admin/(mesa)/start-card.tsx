@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { setStartTime, startNow } from "../actions";
+import { setMatchMinutes, setStartTime, startNow } from "../actions";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
-function SaveTime() {
+function SaveButton({ children = "Mudar" }: { children?: React.ReactNode }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -13,7 +13,7 @@ function SaveTime() {
       disabled={pending}
       className="border border-ink px-3 py-2 text-xs font-bold tracking-wide uppercase transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
     >
-      {pending ? "…" : "Mudar"}
+      {pending ? "…" : children}
     </button>
   );
 }
@@ -100,9 +100,30 @@ export function StartCard({
           defaultValue={scheduledValue}
           className="border border-chalk px-2 py-1.5 font-mono text-sm focus:border-ink focus:outline-none"
         />
-        <SaveTime />
+        <SaveButton />
         <span className="text-xs text-smoke">
           Move o calendário inteiro. Os resultados já registados ficam.
+        </span>
+      </form>
+
+      <form action={setMatchMinutes} className="mt-2 flex flex-wrap items-center gap-2 border-t border-chalk pt-3">
+        <label htmlFor="minutos" className="eyebrow text-smoke">
+          Minutos por jogo
+        </label>
+        <input
+          id="minutos"
+          name="minutes"
+          type="number"
+          min={1}
+          max={60}
+          required
+          defaultValue={matchMinutes}
+          className="w-16 border border-chalk px-2 py-1.5 text-center font-mono text-sm focus:border-ink focus:outline-none"
+        />
+        <SaveButton />
+        <span className="text-xs text-smoke">
+          Re-marca as horas do calendário com este compasso. Jogos mais curtos, torneio a
+          acabar mais cedo.
         </span>
       </form>
 

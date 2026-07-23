@@ -487,6 +487,28 @@ async function shiftTo(start: Date): Promise<void> {
   refreshEverything();
 }
 
+/**
+ * Muda quanto dura cada jogo e re-marca o calendário com esse compasso. A hora
+ * de início fica na mesma; só o espaçamento entre jornadas é que muda. Serve
+ * para acertar o dia — jogos mais curtos, torneio a acabar mais cedo.
+ */
+export async function setMatchMinutes(formData: FormData): Promise<void> {
+  const minutes = Math.max(1, Math.min(60, Number(formData.get("minutes")) || 10));
+  const { supabase, settings, matches } = await loadAll();
+
+  const upd = await supabase.from("settings").update({ match_minutes: minutes }).eq("id", 1);
+  if (upd.error) throw new Error(upd.error.message);
+
+  const start = new Date(settings.starts_at).getTime();
+  for (const m of matches) {
+    const when = new Date(start + (m.round - 1) * minutes * 60_000).toISOString();
+    const { error } = await supabase.from("matches").update({ starts_at: when }).eq("id", m.id);
+    if (error) throw new Error(error.message);
+  }
+
+  refreshEverything();
+}
+
 /** "Começamos agora." Ao minuto certo, para as horas ficarem redondas. */
 export async function startNow(): Promise<void> {
   const agora = new Date();
