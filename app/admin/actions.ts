@@ -8,6 +8,8 @@ import {
   balancedAssignment,
   buildCategorySchedule,
   reconcileKnockouts,
+  repackMatches,
+  slotTime,
 } from "@/lib/tournament";
 import type { Category, Group, Knockout, Match, Participant, Settings } from "@/lib/types";
 
@@ -280,6 +282,21 @@ export async function setParticipantGroup(formData: FormData): Promise<void> {
   const groupId = raw === "" ? null : Number(raw);
 
   const supabase = await createClient();
+
+  // Um guarda-redes não muda de escalão — o escalão vem do ano de nascimento.
+  // Sem isto, arrastá-lo para o grupo de outro escalão deixava-o num estado
+  // inválido (escalão de um, grupo de outro) e ele desaparecia dos dois quadros.
+  if (groupId !== null) {
+    const [{ data: p }, { data: g }] = await Promise.all([
+      supabase.from("participants").select("category_id").eq("id", participantId).maybeSingle(),
+      supabase.from("groups").select("category_id").eq("id", groupId).maybeSingle(),
+    ]);
+    if (!p || !g) throw new Error("Guarda-redes ou grupo não encontrado.");
+    if (p.category_id !== g.category_id) {
+      throw new Error("Um guarda-redes só muda de grupo dentro do escalão dele.");
+    }
+  }
+
   const { error } = await supabase
     .from("participants")
     .update({ group_id: groupId })
@@ -448,6 +465,117 @@ export async function generateSchedule(formData: FormData): Promise<void> {
   const ins = await supabase.from("matches").insert(planned);
   if (ins.error) throw new Error(ins.error.message);
 
+  refreshEverything();
+}
+
+// ---------------------------------------------------------------------------
+// Empréstimo de campos
+// ---------------------------------------------------------------------------
+
+/**
+ * Empresta um campo livre a um escalão. Manda um grupo inteiro para lá — os dois
+ * grupos têm guarda-redes diferentes, por isso correm em paralelo sem nunca
+ * chocar — e re-marca os jogos que faltam a partir de agora, para os dois campos
+ * arrancarem já. As eliminatórias ficam para o campo de casa, depois dos grupos.
+ */
+export async function lendCampo(formData: FormData): Promise<void> {
+  const borrowedCampo = Number(formData.get("campo"));
+  const categoryId = Number(formData.get("categoryId"));
+  const { supabase, settings, categories, matches } = await loadAll();
+
+  const category = categories.find((c) => c.id === categoryId);
+  if (!category) throw new Error("Escalão não encontrado.");
+
+  const owner = categories.find((c) => c.campo === borrowedCampo);
+  if (owner && owner.baliza_size !== category.baliza_size) {
+    throw new Error(
+      `A baliza do campo ${borrowedCampo} é de futebol ${owner.baliza_size}; ` +
+        `o ${category.short_label} joga em futebol ${category.baliza_size}.`,
+    );
+  }
+
+  const cGroup = matches.filter((m) => m.category_id === categoryId && m.stage === "group");
+
+  // Os campos já emprestados a este escalão, mais o novo. Cada um é uma baliza a
+  // mais para onde os jogos que faltam se espalham.
+  const already = [
+    ...new Set(
+      cGroup
+        .filter((m) => m.campo != null && m.winner_participant_id === null)
+        .map((m) => m.campo as number),
+    ),
+  ];
+  if (already.includes(borrowedCampo)) {
+    throw new Error(`O campo ${borrowedCampo} já está a receber jogos deste escalão.`);
+  }
+  const borrowed = [...already, borrowedCampo];
+
+  const pending = cGroup.filter(
+    (m) =>
+      m.winner_participant_id === null &&
+      m.home_participant_id != null &&
+      m.away_participant_id != null,
+  );
+  if (pending.length === 0) {
+    throw new Error("Este escalão já não tem jogos de grupo por decidir para espalhar.");
+  }
+
+  const start = new Date(settings.starts_at);
+  const mm = settings.match_minutes;
+  const played = cGroup.filter((m) => m.winner_participant_id !== null).map((m) => m.round);
+  const base = played.length > 0 ? Math.max(...played) : 0;
+
+  // Baliza 1 = campo de casa; as seguintes = os campos emprestados, por ordem.
+  const packed = repackMatches(pending, 1 + borrowed.length, base + 1);
+  for (const p of packed) {
+    const campo = p.baliza === 1 ? null : (borrowed[p.baliza - 2] ?? null);
+    const { error } = await supabase
+      .from("matches")
+      .update({ round: p.round, campo, starts_at: slotTime(start, p.round, mm) })
+      .eq("id", p.id);
+    if (error) throw new Error(error.message);
+  }
+
+  // As eliminatórias esperam pela fase de grupos: entram depois dela, no campo
+  // de casa.
+  const maxRound = packed.reduce((mx, p) => Math.max(mx, p.round), base);
+  const semis = matches
+    .filter((m) => m.category_id === categoryId && m.stage === "semi")
+    .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0));
+  const final = matches.find((m) => m.category_id === categoryId && m.stage === "final");
+  for (let i = 0; i < semis.length; i++) {
+    const round = maxRound + 1 + i;
+    const { error } = await supabase
+      .from("matches")
+      .update({ round, campo: null, starts_at: slotTime(start, round, mm) })
+      .eq("id", semis[i].id);
+    if (error) throw new Error(error.message);
+  }
+  if (final) {
+    const round = maxRound + semis.length + 1;
+    const { error } = await supabase
+      .from("matches")
+      .update({ round, campo: null, starts_at: slotTime(start, round, mm) })
+      .eq("id", final.id);
+    if (error) throw new Error(error.message);
+  }
+
+  refreshEverything();
+}
+
+/**
+ * Devolve um campo emprestado: os jogos que estavam lá voltam ao campo de casa.
+ * Não re-marca — os que faltam continuam a jogar-se no campo do escalão.
+ */
+export async function returnCampo(formData: FormData): Promise<void> {
+  const campo = Number(formData.get("campo"));
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("matches")
+    .update({ campo: null })
+    .eq("campo", campo)
+    .is("winner_participant_id", null);
+  if (error) throw new Error(error.message);
   refreshEverything();
 }
 

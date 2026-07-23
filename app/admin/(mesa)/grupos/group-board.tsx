@@ -210,7 +210,10 @@ export function GroupBoard({
   const ordered = [...groups].sort((a, b) => a.name.localeCompare(b.name));
   const single = ordered.length === 1;
   const categoryId = ordered[0]?.category_id;
-  const unassigned = shown.filter((p) => p.group_id === null);
+  // Sem grupo, ou com um grupo que não é deste escalão (um órfão de um arrasto
+  // enganado) — em qualquer dos casos, mostra-se para se poder reatribuir.
+  const groupIds = new Set(ordered.map((g) => g.id));
+  const unassigned = shown.filter((p) => p.group_id === null || !groupIds.has(p.group_id));
   const sizeOf = (g: Group) => shown.filter((p) => p.group_id === g.id).length;
   const sizes = ordered.map(sizeOf);
 

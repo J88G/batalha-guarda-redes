@@ -6,10 +6,12 @@ import {
   blockingTie,
   categoryProgress,
   computeStandings,
+  physicalCampo,
   qualifiersPerGroup,
   resolveAll,
 } from "@/lib/tournament";
 import type { ResolvedMatch } from "@/lib/types";
+import { LendingPanel } from "./lending-panel";
 import { MatchCard } from "./match-card";
 import { StartCard } from "./start-card";
 
@@ -26,20 +28,18 @@ export default async function AdminPage() {
   const shortOf = (categoryId: number) => campoOf(categoryId)?.short_label ?? "";
   const sortOf = (categoryId: number) => campoOf(categoryId)?.sort_order ?? 0;
 
-  // Uma baliza física — campo + número — só tem um jogo de cada vez: é esse que
-  // a mesa vai decidir.
-  const balizaKey = (m: ResolvedMatch) => `${m.category_id}:${m.baliza}`;
+  // Cada campo físico só tem um jogo de cada vez — incluindo os emprestados, que
+  // aparecem no campo para onde foram mandados.
+  const campoKey = (m: ResolvedMatch) => physicalCampo(m, categories);
   const toDecide = resolved
     .filter((m) => m.status === "live" || (m.status === "scheduled" && m.winner_participant_id === null))
     .reduce((acc, m) => {
-      const held = acc.get(balizaKey(m));
-      if (!held || m.starts_at < held.starts_at) acc.set(balizaKey(m), m);
+      const held = acc.get(campoKey(m));
+      if (!held || m.starts_at < held.starts_at) acc.set(campoKey(m), m);
       return acc;
-    }, new Map<string, ResolvedMatch>());
+    }, new Map<number, ResolvedMatch>());
 
-  const open = [...toDecide.values()].sort(
-    (a, b) => sortOf(a.category_id) - sortOf(b.category_id) || a.baliza - b.baliza,
-  );
+  const open = [...toDecide.values()].sort((a, b) => campoKey(a) - campoKey(b));
   const done = resolved
     .filter((m) => m.winner_participant_id !== null)
     .sort((a, b) => b.starts_at.localeCompare(a.starts_at) || sortOf(a.category_id) - sortOf(b.category_id))
@@ -65,6 +65,49 @@ export default async function AdminPage() {
   // Antes do apito, o "atraso" não quer dizer nada: os jogos podem estar
   // datados de um ensaio antigo. Só depois de começar é que faz sentido.
   const behind = started && currentRound !== null ? expectedRound - currentRound : 0;
+
+  // Empréstimo de campos: um campo sem jogos por decidir pode receber um grupo
+  // de outro escalão compatível (mesma baliza) que ainda tenha muito por jogar.
+  const pendingGroupOf = (catId: number) =>
+    matches.filter(
+      (m) => m.category_id === catId && m.stage === "group" && m.winner_participant_id === null,
+    ).length;
+  const busyCampo = (campo: number) =>
+    resolved.some((m) => m.winner_participant_id === null && campoKey(m) === campo);
+
+  const freeCampos = categories
+    .filter((owner) => !busyCampo(owner.campo))
+    .map((owner) => {
+      // O escalão mais atrasado com baliza igual e ainda muito por jogar. Pode
+      // já estar a usar outro campo emprestado — mais um ajuda na mesma.
+      const borrower = categories
+        .filter(
+          (c) =>
+            c.id !== owner.id &&
+            c.baliza_size === owner.baliza_size &&
+            pendingGroupOf(c.id) > 1,
+        )
+        .sort((a, b) => pendingGroupOf(b.id) - pendingGroupOf(a.id))[0];
+      return borrower
+        ? {
+            campo: owner.campo,
+            categoryId: borrower.id,
+            label: borrower.short_label,
+            pending: pendingGroupOf(borrower.id),
+          }
+        : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const loans = categories
+    .map((owner) => {
+      const borrowed = matches.find(
+        (m) => m.campo === owner.campo && m.winner_participant_id === null,
+      );
+      const cat = borrowed ? categories.find((c) => c.id === borrowed.category_id) : undefined;
+      return cat ? { campo: owner.campo, label: cat.short_label } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
   const lastAt = matches.reduce<string | null>(
     (acc, m) => (acc === null || m.starts_at > acc ? m.starts_at : acc),
     null,
@@ -129,6 +172,8 @@ export default async function AdminPage() {
         hasResults={done.length > 0}
       />
 
+      <LendingPanel free={freeCampos} loans={loans} />
+
       {stuck.length > 0 && (
         <section className="mt-4 border-l-4 border-spot bg-spot/5 p-3" aria-labelledby="empates">
           <h2 id="empates" className="text-sm font-bold">
@@ -173,7 +218,7 @@ export default async function AdminPage() {
               <MatchCard
                 key={m.id}
                 match={m}
-                campoLabel={shortOf(m.category_id)}
+                campoLabel={shortOf(m.category_id) + (m.campo ? ` · C${m.campo}` : "")}
                 showBaliza={(campoOf(m.category_id)?.baliza_count ?? 1) > 1}
               />
             ))}
@@ -195,7 +240,7 @@ export default async function AdminPage() {
               <MatchCard
                 key={m.id}
                 match={m}
-                campoLabel={shortOf(m.category_id)}
+                campoLabel={shortOf(m.category_id) + (m.campo ? ` · C${m.campo}` : "")}
                 showBaliza={(campoOf(m.category_id)?.baliza_count ?? 1) > 1}
               />
             ))}

@@ -16,6 +16,8 @@ export type Category = {
   sort_order: number;
   /** O campo onde este escalão joga. */
   campo: number;
+  /** O tamanho da baliza do escalão (5 ou 7). Só se empresta entre iguais. */
+  baliza_size: number;
   /** Quantos jogos correm ao mesmo tempo no campo. */
   baliza_count: number;
   /** 1 (poule única) ou 2 grupos. */
@@ -53,6 +55,8 @@ export type Match = {
   round: number;
   /** Que baliza do campo — 1..baliza_count. */
   baliza: number;
+  /** Onde é mesmo jogado. Nulo = o campo do escalão; senão, um campo emprestado. */
+  campo: number | null;
   slot: number | null;
   starts_at: string;
   home_participant_id: number | null;

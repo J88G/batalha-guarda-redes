@@ -3,25 +3,10 @@ import { GoalPanel } from "@/components/goal-panel";
 import { LiveRefresh } from "@/components/live-refresh";
 import { getBattle } from "@/lib/data";
 import { dateLabel } from "@/lib/format";
-import { championOf, resolveAll } from "@/lib/tournament";
+import { championOf, physicalCampo, resolveAll } from "@/lib/tournament";
 import type { Category, ResolvedMatch } from "@/lib/types";
 
 export const revalidate = 3;
-
-/** O que mostrar nas balizas de um campo: o que está a decorrer, senão o que aí vem. */
-function onBalizas(matches: ResolvedMatch[], balizaCount: number): (ResolvedMatch | undefined)[] {
-  const live = matches.filter((m) => m.status === "live");
-  let show = live;
-  if (show.length === 0) {
-    const scheduled = matches.filter((m) => m.status === "scheduled");
-    if (scheduled.length > 0) {
-      const nextRound = Math.min(...scheduled.map((m) => m.round));
-      show = scheduled.filter((m) => m.round === nextRound);
-    }
-  }
-  show = [...show].sort((a, b) => a.baliza - b.baliza).slice(0, balizaCount);
-  return Array.from({ length: balizaCount }, (_, i) => show.find((m) => m.baliza === i + 1) ?? show[i]);
-}
 
 export default async function AgoraPage() {
   const { settings, categories, groups, participants, matches } = await getBattle();
@@ -76,33 +61,49 @@ export default async function AgoraPage() {
         </div>
       ) : (
         <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {categories.map((category) => (
-            <CampoRow
-              key={category.id}
-              category={category}
-              matches={resolved.filter((m) => m.category_id === category.id)}
-            />
-          ))}
+          {[...categories]
+            .sort((a, b) => a.campo - b.campo)
+            .map((owner) => (
+              <CampoRow key={owner.campo} owner={owner} resolved={resolved} categories={categories} />
+            ))}
         </div>
       )}
     </>
   );
 }
 
-function CampoRow({ category, matches }: { category: Category; matches: ResolvedMatch[] }) {
-  // Um campo, uma baliza: o jogo que lá está agora (ou o que aí vem).
-  const [current] = onBalizas(matches, 1);
+function CampoRow({
+  owner,
+  resolved,
+  categories,
+}: {
+  owner: Category;
+  resolved: ResolvedMatch[];
+  categories: Category[];
+}) {
+  // O jogo que está neste campo físico agora — pode ser do escalão dono do campo
+  // ou um emprestado de outro. Senão, o que aí vem.
+  const here = resolved.filter((m) => physicalCampo(m, categories) === owner.campo);
+  const current =
+    here.find((m) => m.status === "live") ??
+    here
+      .filter((m) => m.status === "scheduled")
+      .sort((a, b) => a.round - b.round || a.starts_at.localeCompare(b.starts_at))[0];
+
+  const playing = current ? categories.find((c) => c.id === current.category_id) : undefined;
+  const borrowed = current?.campo != null && playing?.id !== owner.id;
+  const label = playing ?? owner;
 
   return (
-    <section aria-labelledby={`campo-${category.slug}`} className="flex h-full flex-col">
-      <h2 id={`campo-${category.slug}`} className="mb-1.5 flex items-baseline gap-2 border-b-2 border-ink pb-1">
-        <span className="numeral text-xl">{category.short_label}</span>
-        <span className="eyebrow text-smoke">Campo {category.campo}</span>
-        <Link href={`/escaloes/${category.slug}`} className="eyebrow ml-auto text-smoke hover:text-ink">
+    <section aria-labelledby={`campo-${owner.campo}`} className="flex h-full flex-col">
+      <h2 id={`campo-${owner.campo}`} className="mb-1.5 flex items-baseline gap-2 border-b-2 border-ink pb-1">
+        <span className="numeral text-xl">{label.short_label}</span>
+        <span className="eyebrow text-smoke">Campo {owner.campo}</span>
+        <Link href={`/escaloes/${label.slug}`} className="eyebrow ml-auto text-smoke hover:text-ink">
           Classificação →
         </Link>
       </h2>
-      <GoalPanel match={current} label="Baliza" />
+      <GoalPanel match={current} label={borrowed ? "Baliza emprestada" : "Baliza"} />
     </section>
   );
 }

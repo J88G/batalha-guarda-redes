@@ -1,13 +1,13 @@
 -- Batalha de Guarda-Redes · escalões, grupos e guarda-redes inscritos.
 
 insert into public.categories
-  (slug, name, short_label, sort_order, campo, baliza_count, group_count, legs, knockout, birth_year_min, birth_year_max)
+  (slug, name, short_label, sort_order, campo, baliza_count, baliza_size, group_count, legs, knockout, birth_year_min, birth_year_max)
 values
-  ('2017-19', '2017/18/19', '17→19', 1, 1, 1, 2, 1, 'semis', 2017, 2019),
-  ('2015-16', '2015/16',    '15/16', 2, 2, 1, 2, 1, 'semis', 2015, 2016),
-  ('2013-14', '2013/14',    '13/14', 3, 3, 1, 2, 1, 'semis', 2013, 2014),
-  ('2011-12', '2011/12',    '11/12', 4, 4, 1, 2, 1, 'semis', 2011, 2012),
-  ('2009-10', '2009/10',    '09/10', 5, 5, 1, 1, 2, 'none',  2009, 2010);
+  ('2017-19', '2017/18/19', '17→19', 1, 1, 1, 5, 2, 1, 'semis', 2017, 2019),
+  ('2015-16', '2015/16',    '15/16', 2, 2, 1, 7, 2, 1, 'semis', 2015, 2016),
+  ('2013-14', '2013/14',    '13/14', 3, 3, 1, 7, 2, 1, 'semis', 2013, 2014),
+  ('2011-12', '2011/12',    '11/12', 4, 4, 1, 7, 2, 1, 'semis', 2011, 2012),
+  ('2009-10', '2009/10',    '09/10', 5, 5, 1, 7, 1, 2, 'none',  2009, 2010);
 
 -- Grupos: dois (A/B) onde o formato os pede, um só ("Única") na poule de
 -- campeonato.

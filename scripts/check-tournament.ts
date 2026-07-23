@@ -6,6 +6,7 @@ import {
   championOf,
   qualifiersPerGroup,
   reconcileKnockouts,
+  repackMatches,
   resolveAll,
   roundsFor,
 } from "../lib/tournament.ts";
@@ -37,6 +38,7 @@ function scenario(cfg: Cfg) {
     short_label: "X",
     sort_order: 1,
     campo: 1,
+    baliza_size: 7,
     baliza_count: cfg.balizas,
     group_count: cfg.groupCount,
     legs: cfg.legs,
@@ -207,6 +209,45 @@ console.log("\n· Campeão de um campeonato (sem eliminatória)");
   check("campeonato a meio · sem campeão", championOf(s.category, s.groups, s.participants, matches), null);
   for (const m of matches) m.winner_participant_id = Math.min(m.home_participant_id!, m.away_participant_id!);
   check("campeonato fechado · campeão é o 1º", championOf(s.category, s.groups, s.participants, matches)?.name, "G1");
+}
+
+// ---------------------------------------------------------------------------
+console.log("\n· Empréstimo de campos: re-espalhar por N balizas sem chocar");
+// ---------------------------------------------------------------------------
+{
+  // 19 GR em 2 grupos, calendário de uma baliza; empresta-se para ter 3 balizas
+  // (campo de casa + 2 emprestados). Os jogos que faltam re-espalham-se.
+  const s = scenario({ count: 19, groupCount: 2, legs: 1, knockout: "semis", balizas: 1 });
+  const matches = withIds(s.planned).filter((m) => m.stage === "group");
+
+  for (const balizas of [2, 3]) {
+    const packed = repackMatches(matches, balizas, 1);
+    const byId = new Map(matches.map((m) => [m.id, m]));
+
+    check(`empréstimo (${balizas} balizas) · todos os jogos ficam`, packed.length, matches.length);
+    ok(
+      `empréstimo (${balizas} balizas) · nunca mais balizas do que o campo tem`,
+      packed.every((p) => p.baliza >= 1 && p.baliza <= balizas),
+    );
+
+    // A regra de ouro: ninguém joga dois ao mesmo tempo (mesma jornada).
+    let dobrado = false;
+    const porRonda = new Map<number, Set<number>>();
+    for (const p of packed) {
+      const m = byId.get(p.id)!;
+      const set = porRonda.get(p.round) ?? new Set<number>();
+      for (const gr of [m.home_participant_id!, m.away_participant_id!]) {
+        if (set.has(gr)) dobrado = true;
+        set.add(gr);
+      }
+      porRonda.set(p.round, set);
+    }
+    ok(`empréstimo (${balizas} balizas) · ninguém joga dois ao mesmo tempo`, !dobrado);
+    ok(
+      `empréstimo (${balizas} balizas) · usa mais do que uma baliza`,
+      new Set(packed.map((p) => p.baliza)).size > 1,
+    );
+  }
 }
 
 console.log(failures === 0 ? "\n✓ Tudo certo.\n" : `\n✗ ${failures} falha(s).\n`);

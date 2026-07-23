@@ -40,17 +40,32 @@ export function matchStatus(
   return now.getTime() >= new Date(match.starts_at).getTime() ? "live" : "scheduled";
 }
 
-/** A chave de uma baliza física: o campo do escalão e o número da baliza. */
-function balizaKey(m: Pick<Match, "category_id" | "baliza">): string {
-  return `${m.category_id}:${m.baliza}`;
+/**
+ * Onde o jogo é mesmo jogado. Normalmente é o campo do escalão; num jogo
+ * emprestado, é o campo para onde a mesa o mandou.
+ */
+export function physicalCampo(
+  m: Pick<Match, "campo" | "category_id">,
+  categories: Pick<Category, "id" | "campo">[],
+): number {
+  if (m.campo != null) return m.campo;
+  return categories.find((c) => c.id === m.category_id)?.campo ?? m.category_id;
 }
 
-/** Por baliza, o jogo que lá está agora: o primeiro por decidir. */
-export function currentMatchByBaliza(matches: Match[]): Map<string, number> {
-  const current = new Map<string, Match>();
+/**
+ * Por campo físico, o jogo que lá está agora: o primeiro por decidir. Como um
+ * escalão pode ter jogos em dois campos (o seu e um emprestado), cada campo
+ * segue a sua fila — é isto que faz correr dois jogos do mesmo escalão ao mesmo
+ * tempo, sem os confundir.
+ */
+export function currentMatchByCampo(
+  matches: Match[],
+  categories: Pick<Category, "id" | "campo">[],
+): Map<number, number> {
+  const current = new Map<number, Match>();
   for (const m of matches) {
     if (isFinished(m)) continue;
-    const key = balizaKey(m);
+    const key = physicalCampo(m, categories);
     const held = current.get(key);
     if (!held) {
       current.set(key, m);
@@ -342,6 +357,28 @@ function scheduleOntoBalizas(
   return out;
 }
 
+/**
+ * Re-espalha jogos por decidir por N balizas, sem nunca pôr um guarda-redes em
+ * dois ao mesmo tempo. É o que faz o empréstimo de campos: baliza 1 é o campo de
+ * casa, e cada campo emprestado é mais uma baliza. Devolve, por jogo, a nova
+ * jornada e a baliza (1..N) onde fica.
+ */
+export function repackMatches(
+  pending: Pick<Match, "id" | "home_participant_id" | "away_participant_id" | "group_id">[],
+  balizaCount: number,
+  minRound: number,
+): { id: number; round: number; baliza: number }[] {
+  const pairings: Pairing[] = pending.map((m) => ({
+    home: m.home_participant_id as number,
+    away: m.away_participant_id as number,
+    group_id: m.group_id,
+  }));
+  // scheduleOntoBalizas mantém a ordem de entrada, por isso o índice liga cada
+  // resultado ao jogo que lhe deu origem.
+  const scheduled = scheduleOntoBalizas(pairings, balizaCount, minRound);
+  return scheduled.map((s, i) => ({ id: pending[i].id, round: s.round, baliza: s.baliza }));
+}
+
 /** Quantos se apuram de cada grupo, conforme o formato. */
 export function qualifiersPerGroup(category: Pick<Category, "group_count" | "knockout">): number {
   if (category.knockout === "none") return 0;
@@ -395,6 +432,7 @@ export function buildCategorySchedule(
       group_id: pairing.group_id,
       round,
       baliza,
+      campo: null,
       slot: null,
       starts_at: slotTime(start, round, matchMinutes),
       home_participant_id: pairing.home,
@@ -436,6 +474,7 @@ export function buildCategorySchedule(
         group_id: null,
         round: semiRound,
         baliza: twoBalizas ? i + 1 : 1,
+        campo: null,
         slot: i + 1,
         starts_at: slotTime(start, semiRound, matchMinutes),
         home_participant_id: null,
@@ -469,6 +508,7 @@ export function buildCategorySchedule(
     group_id: null,
     round,
     baliza: 1,
+    campo: null,
     slot: null,
     starts_at: slotTime(start, round, matchMinutes),
     home_participant_id: null,
@@ -589,8 +629,8 @@ export function resolveAll(
   now: Date,
 ): ResolvedMatch[] {
   const ctx = buildResolveContext(categories, groups, participants, matches);
-  const current = currentMatchByBaliza(matches);
-  return matches.map((m) => resolveMatch(m, ctx, now, current.get(balizaKey(m)) === m.id));
+  const current = currentMatchByCampo(matches, categories);
+  return matches.map((m) => resolveMatch(m, ctx, now, current.get(physicalCampo(m, categories)) === m.id));
 }
 
 export type KnockoutPatch = {
