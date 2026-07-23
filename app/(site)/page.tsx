@@ -75,7 +75,7 @@ export default async function AgoraPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-8 space-y-6">
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {categories.map((category) => (
             <CampoRow
               key={category.id}
@@ -94,7 +94,7 @@ function CampoRow({ category, matches }: { category: Category; matches: Resolved
   const [current] = onBalizas(matches, 1);
 
   return (
-    <section aria-labelledby={`campo-${category.slug}`}>
+    <section aria-labelledby={`campo-${category.slug}`} className="flex h-full flex-col">
       <h2 id={`campo-${category.slug}`} className="mb-1.5 flex items-baseline gap-2 border-b-2 border-ink pb-1">
         <span className="numeral text-xl">{category.short_label}</span>
         <span className="eyebrow text-smoke">Campo {category.campo}</span>
